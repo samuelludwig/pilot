@@ -12,7 +12,7 @@
 # - Have the --new flag take a type of script in order to determine the
 # template to use?
 
-(import /build/json :as json)
+#(import /build/json :as json)
 (import ./read-config :as conf) #TODO figure out how that works
 
 # (import ./argparse :as cli-args)
@@ -28,8 +28,6 @@
 #
 # First we gather our configs
 #
-
-(os/stat (string conf/config-location "/scripts/hello/world.sh"))
 
 (def flag '(choice "-" "--")) # Technically double-hyphen is redundant
 (defn flag? [s] (peg/match flag s))
@@ -50,6 +48,42 @@
     (nil? (string/find "x" (fstats :permissions)))))
 
 (defn hd-tl [x] [(first x) (drop 1 x)])
+
+(defn- append-to-file
+  [path text]
+  (file/write (file/open path :a) text))
+
+(not-nil-or-empty? [x] (not (or (nil? x) (empty? x))))
+
+(defn open-in-editor
+  [path]
+  (os/execute [(settings :pilot-editor) path] :p))
+
+(defn touch-chmod-and-open
+  [path]
+  (os/open path :c)
+  (os/chmod path 8r755)
+  (open-in-editor path))
+
+(defn create-new-executable-file
+  [path]
+  (os/open path :c)
+  (os/chmod path 8r755))
+
+(defn create-file-from-template
+  [path template-path]
+  (let [t (file/open template-path :r)
+        template (if (nil? t) :dne (file/read t :all))]
+    (create-executable-file-with-contents path template)))
+
+(defn create-executable-file-with-contents
+  [path contents]
+  (let [f (file/open path)]
+    (create-new-executable-file path)
+    (copy-to-file f)))
+
+(defn take-until-pattern [ind pattern]
+  (take-until |(string/find pattern $) ind))
 
 # The default behavior for `sd foo bar` is:
 # 
@@ -118,7 +152,7 @@
 
 # COMMANDS
 # [x] run-script
-# [ ] run-help
+# [ ] run-help TODO
 # [x] run-new
 # [x] run-edit
 # [x] run-cat
@@ -182,7 +216,7 @@
       (file-not-exists?) (create-new-script path template-path body)
       (run-help path))))
 
-(defn run-help
+(defn run-help #TODO
   ``
   TODO
   ``
@@ -197,42 +231,6 @@
       (if 
         (body-provided?) (append-to-file path script-body)
         (run-edit path)))))
-
-(defn- append-to-file
-  [path text]
-  (file/write (file/open path :a) text))
-
-(not-nil-or-empty? [x] (not (or (nil? x) (empty? x))))
-
-(defn open-in-editor
-  [path]
-  (os/execute [(settings :pilot-editor) path] :p))
-
-(defn touch-chmod-and-open
-  [path]
-  (os/open path :c)
-  (os/chmod path 8r755)
-  (open-in-editor path))
-
-(defn create-new-executable-file
-  [path]
-  (os/open path :c)
-  (os/chmod path 8r755))
-
-(defn create-file-from-template
-  [path template-path]
-  (let [t (file/open template-path :r)
-        template (if (nil? t) :dne (file/read t :all))]
-    (create-executable-file-with-contents path template)))
-
-(defn create-executable-file-with-contents
-  [path contents]
-  (let [f (file/open path)]
-    (create-new-executable-file path)
-    (copy-to-file f)))
-
-(defn take-until-pattern [ind pattern]
-  (take-until |(string/find pattern $) ind))
 
 # Expect a c
 (defn main 
