@@ -1,10 +1,11 @@
 (defn- keywordize-keys
   [tab]
   (let [[ks vs] [(keys tab) (values tab)]]
-    (table 
-      ;(interleave 
-         (map keyword ks) 
-         vs))))
+    (-> ks
+        (|(map keyword $))
+        (interleave vs)
+        (splice)
+        (struct))))
 
 (defn- to-lines
   "Splits a multi-line string into an array of string, one for each line."
@@ -63,7 +64,7 @@
 (def config-defaults 
   {:script-path (string config-location "/scripts")
    :cat-provider "bat"
-   :pilot-editor (or (os/getenv "EDITOR") "vi")
+   :pilot-editor (or (os/getenv "VISUAL") (os/getenv "EDITOR") "vi")
    :copier-integration false})
 
 (def config-buffer 
@@ -82,4 +83,3 @@
      (parse-config-buffer config-buffer))))
 
 (def script-path (settings :script-path))
-
