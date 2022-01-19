@@ -20,25 +20,17 @@
 # First we gather our configs
 #
 
-(import ./read-config :as conf) #TODO figure out how that works
-
 # (import ./argparse :as cli-args)
-(def settings conf/settings)
 
-(def flag-commands
-  {:help ()
-   :verbatim ()
-   :new ()
-   :edit ()
-   :cat ()
-   :which ()})
+(import ./read-config :as conf)
+(def settings conf/settings)
 
 (defn- stat-of
   [f stat]
   (get-in f [:fstats stat]))
 
 (def flag '(choice "-" "--")) # Technically double-hyphen is redundant
-(defn flag? [s] (peg/match flag s))
+(defn flag? [s] (truthy? (peg/match flag s)))
 (defn file? [f] 
   (= (stat-of f :mode) :file))
 (defn dir? [f] 
@@ -50,10 +42,15 @@
   (and (file? f) (executable? f)))
 
 (defn- load-file
+  ``
+  Given `path`, return a datastructure containing the core/file located at that
+  path, os stats for the file, and the original path given.
+  ``
   [path &opt mode]
-  {:file (if mode (file/open path mode) (file/open path) ) 
-   :fstats (os/stat path)
+  {:fstats (os/stat path)
+   :file (if mode (file/open path mode) (file/open path) ) 
    :path path})
+
 
 (defn- close-file 
   [f] 
@@ -76,20 +73,60 @@
 
 (defn- file-exists-at-path?
   [path]
-  (not (nil? (os/stat path))))
+  (truthy? (os/stat path)))
 
-(defn hd-tl [x] [(first x) (drop 1 x)])
+(defn hd-tl [x] [(first x) (when (not (nil? x)) (drop 1 x))])
 
-(defn- not-nil-or-empty? [x] (not (or (nil? x) (empty? x))))
+(defn- nil-or-empty? [x] (or (nil? x) (empty? x)))
+(defn- not-nil-or-empty? [x] (not (nil-or-empty? x)))
 
 (defn open-in-editor
   [path]
   (os/execute [(settings :pilot-editor) path] :p))
 
+(defn- dir-path? [path] (= (os/stat path) :dir))
+
+(defn- mkdir-from-path-root
+  ``
+  Make the directory at path `root/dirname`, and return that path
+  ``
+  [root dirname]
+  (let [path (string root "/" dirname)]
+    (if (dir-path? path) 
+      path 
+      (do 
+        (os/mkdir path) 
+        path))))
+
+(defn- mkdir-p
+  ``
+  An emulation of running `mkdir -p`, i.e., create a directory at `path`, while
+  creating any higher-level directories that don't already exist.
+  ``
+  [path &opt segments]
+  (let [path-segments (string/split "/" path)]
+    (reduce2 mkdir-from-path-root path-segments)))
+
+(defn- all-but-last [ind]
+  (->> ind
+       reverse
+       (drop 1)
+       reverse))
+
+(defn make-file
+  [path]
+  (let [path-segments (string/split "/" path)
+        script-name (last path-segments) # TODO this feels dirty/ineff
+        base-path (string/join (all-but-last path-segments) "/")]
+    (do 
+      (mkdir-p base-path)
+      (os/open (string base-path "/" script-name) :c))))
+
 (defn create-new-executable-file
   [path]
-  (os/open path :c)
-  (os/chmod path 8r755))
+  (do 
+    (make-file path)
+    (os/chmod path 8r755)))
 
 (defn touch-chmod-and-open
   [path]
@@ -112,9 +149,10 @@
       contents)))
 
 (defn create-file-from-template
-  [path template-path]
-  (let [template (read-template-file template-path)]
-    (create-executable-file-with-contents path template)))
+  [path template-path &opt additional-content]
+  (let [template (read-template-file template-path)
+        contents (string template additional-content)]
+    (create-executable-file-with-contents path contents)))
 
 (defn take-until-pattern [ind pattern]
   (take-until |(string/find pattern $) ind))
@@ -142,11 +180,12 @@
   [first-arg &opt remaining-args]
   (let [[next-arg rem] (hd-tl remaining-args)
         new-path (string first-arg "/" next-arg)
-        fstats (os/stat first-arg)]
+        real-path (string (settings :script-path) "/" first-arg)
+        fstats (os/stat real-path)]
     (cond
       # if there's no remaining arguments, our path is done, handle it
       # according to the logic above
-      (nil? remaining-args) {:path first-arg}
+      (nil-or-empty? remaining-args) {:path first-arg}
 
       # if the next argument is a flag, we pass our path, the flag, and the
       # remaining arguments to a flag-handling function
@@ -158,9 +197,9 @@
       # remaining arguments passed to it
       # what happens in the case where we want to define a "new" script that
       # has a parent directory the same name of an executable?
-      (executable-file? fstats) {:path first-arg :arguments remaining-args}
+      (executable-file? (load-file real-path)) {:path first-arg :arguments remaining-args}
 
-      (parse-command new-path ;rem))))
+      (parse-command new-path rem))))
 
 (defn with-default 
   [x default-val] 
@@ -213,7 +252,7 @@
         cat-provider (settings :cat-provider)]
     (do 
       (close-file f)
-      (if cattable? (os/execute [cat-provider path])
+      (if cattable? (os/execute [cat-provider path] :p)
         (run-help path)))))
 
 (defn run-which
@@ -222,7 +261,7 @@
   `` 
   [path]
   (let [fstats (os/stat path :mode)]
-    (if (fstats) (os/execute ["echo" path] :p)
+    (if (truthy? fstats) (os/execute ["echo" path] :p)
       (run-help path))))
 
 (defn run-edit
@@ -238,12 +277,10 @@
 
 (defn- create-new-script
   [path template-path &opt script-body]
-  (let [body-provided? (empty? script-body)]
-    body-provided?
+  (let [body-provided? (not-nil-or-empty? script-body)]
     (do
-      (create-file-from-template path template-path)
-      (if body-provided? 
-        (append-to-file path script-body)
+      (create-file-from-template path template-path script-body)
+      (when body-provided? 
         (run-edit path)))))
 
 (defn run-new
@@ -263,8 +300,6 @@
     (if file-not-exists? 
       (create-new-script path template-path body)
       (run-help path))))
-
-settings
 
 (defn handle-command 
   [{:path p :flag f :arguments args}]
@@ -288,6 +323,11 @@ settings
 # closing in the interest of isolation, but it would probably be best to just
 # have them take text/file-entity instead of a filepath that they open
 # themselves
+#
+# UPDATE: I did end up reworking this, but man do I wish I knew about the
+# slurp/spit functions... though, they error when the file doesn't exist/can't
+# be reached(or rather, created, in the context of `spit`), so i dont know if i
+# want that.
 
 #(handle-command {:path "nix/version" :flag "--new" :arguments ["nix --version"]})
 
@@ -296,4 +336,4 @@ settings
   [& args] 
   (let [exe-name (first args)
         command (drop 1 args)]
-    (handle-command {:path "nix/version" :flag "--new" :arguments ["nix --version"]})))
+    (handle-command (parse-command ;(hd-tl command)))))
