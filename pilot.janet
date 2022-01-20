@@ -51,7 +51,6 @@
    :file (if mode (file/open path mode) (file/open path) ) 
    :path path})
 
-
 (defn- close-file 
   [f] 
   (if (file? f) 
@@ -304,18 +303,18 @@
 (defn handle-command 
   [{:path p :flag f :arguments args}]
   (let [args (with-default args [])
-        f (with-default f "") # peg/match errors on nil
+        flag (with-default f "") # peg/match errors on nil
         # Get root path from settings and prepend it (do we want logic for
         # multiple possible root PATHs to look at?)
         real-path (string (settings :script-path) "/" p)
         file (load-file real-path)]
     (cond
-      (peg/match '(choice "-v" "--verbatim") f) (run-script real-path args)
-      (peg/match '(choice "-h" "--help") f) (run-help real-path)
-      (peg/match '(choice "-n" "--new") f) (run-new real-path args)
-      (peg/match '(choice "-c" "--cat") f) (run-cat real-path)
-      (peg/match '(choice "-e" "--edit") f) (run-edit real-path)
-      (peg/match '(choice "-w" "--which") f) (run-which real-path)
+      (peg/match '(choice "-v" "--verbatim") flag) (run-script real-path args)
+      (peg/match '(choice "-h" "--help") flag) (run-help real-path)
+      (peg/match '(choice "-n" "--new") flag) (run-new real-path args)
+      (peg/match '(choice "-c" "--cat") flag) (run-cat real-path)
+      (peg/match '(choice "-e" "--edit") flag) (run-edit real-path)
+      (peg/match '(choice "-w" "--which") flag) (run-which real-path)
       (executable-file? file) (run-script real-path args)
       (run-help real-path))))
 
