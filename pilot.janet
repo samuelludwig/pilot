@@ -21,7 +21,7 @@
 #
 
 # (import ./argparse :as cli-args)
-
+(import ./futils :as fs)
 (import ./read-config :as conf)
 (def settings conf/settings)
 
@@ -70,11 +70,7 @@
         helpfile-exists? (file? helpfile)]
     (if helpfile-exists? () ())))
 
-(defn- file-exists-at-path?
-  [path]
-  (truthy? (os/stat path)))
-
-(defn hd-tl [x] [(first x) (when (not (nil? x)) (drop 1 x))])
+(defn- hd-tl [x] [(first x) (when (not (nil? x)) (drop 1 x))])
 
 (defn- nil-or-empty? [x] (or (nil? x) (empty? x)))
 (defn- not-nil-or-empty? [x] (not (nil-or-empty? x)))
@@ -83,42 +79,11 @@
   [path]
   (os/execute [(settings :pilot-editor) path] :p))
 
-(defn- dir-path? [path] (= (os/stat path) :dir))
-
-(defn- mkdir-from-path-root
-  ``
-  Make the directory at path `root/dirname`, and return that path
-  ``
-  [root dirname]
-  (let [path (string root "/" dirname)]
-    (if (dir-path? path) 
-      path 
-      (do 
-        (os/mkdir path) 
-        path))))
-
-(defn- mkdir-p
-  ``
-  An emulation of running `mkdir -p`, i.e., create a directory at `path`, while
-  creating any higher-level directories that don't already exist.
-  ``
-  [path &opt segments]
-  (let [path-segments (string/split "/" path)]
-    (reduce2 mkdir-from-path-root path-segments)))
-
-(defn- all-but-last [ind]
-  (->> ind
-       reverse
-       (drop 1)
-       reverse))
-
 (defn make-file
   [path]
-  (let [path-segments (string/split "/" path)
-        script-name (last path-segments) # TODO this feels dirty/ineff
-        base-path (string/join (all-but-last path-segments) "/")]
+  (let [[base-path script-name] (fs/split-path-into-base-and-child path)]
     (do 
-      (mkdir-p base-path)
+      (fs/mkdir-p base-path)
       (os/open (string base-path "/" script-name) :c))))
 
 (defn create-new-executable-file
@@ -129,29 +94,18 @@
 
 (defn touch-chmod-and-open
   [path]
-  (create-new-executable-file path)
+  (fs/create-new-executable-file path)
   (open-in-editor path))
-
-(defn create-executable-file-with-contents
-  [path contents]
-  (create-new-executable-file path)
-  (let [f (load-file path :a)]
-    (append-to-file f contents)
-    (close-file f)))
 
 (defn- read-template-file 
   [template-path] 
-  (let [f (load-file template-path :r)
-        contents (read-file f)]
-    (do 
-      (close-file f)
-      contents)))
+  (fs/read-all template-path))
 
 (defn create-file-from-template
   [path template-path &opt additional-content]
   (let [template (read-template-file template-path)
         contents (string template additional-content)]
-    (create-executable-file-with-contents path contents)))
+    (fs/create-executable-file path contents)))
 
 (defn take-until-pattern [ind pattern]
   (take-until |(string/find pattern $) ind))
@@ -301,7 +255,7 @@
       (run-help path))))
 
 (defn handle-command 
-  [{:path p :flag f :arguments args}]
+  [{:path p :flag f :arguments args :options opts}]
   (let [args (with-default args [])
         flag (with-default f "") # peg/match errors on nil
         # Get root path from settings and prepend it (do we want logic for

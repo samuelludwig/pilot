@@ -1,5 +1,18 @@
-(defn file? [f] 
-  (= (os/stat f :mode) :file))
+(defn file-exists?
+  [path]
+  (truthy? (os/stat path)))
+
+(defn- not-nil? [x] (not= nil x))
+
+(defn file? [path] 
+  (= (os/stat path :mode) :file))
+
+(defn executable-file?
+  [path]
+  (let [fstats (os/stat path)]
+    (and 
+      (= (fstats :mode) :file)
+      (not-nil? (string/find "x" (fstats :permissions))))))
 
 (defn dir? [path] (= (os/stat path :mode) :directory))
 
@@ -9,19 +22,21 @@
   ``
   [root dirname]
   (let [path (string root "/" dirname)]
-    (if (dir-path? path) 
+    (if (dir? path) 
       path 
       (do 
         (os/mkdir path) 
         path))))
 
-(doc string/split)
+(defn- all-but-last
+  [ind]
+  (take 
+    (- (length ind) 1) 
+    ind))
 
 (defn- big-hd-tl 
   [ind]
-  [(take (- (length ind) 1) ind) (last ind)])
-
-(index-of-last-pattern-occurance "homedot.configpilotscriptsnew" "/")
+  [(all-but-last ind) (last ind)])
 
 (defn- index-of-last-pattern-occurance
   [str pattern]
@@ -29,7 +44,7 @@
        (string/find-all pattern) 
        last))
 
-(defn split-path-into-root-and-child
+(defn split-path-into-base-and-child
   [path]
   (let [dir-sep-index (index-of-last-pattern-occurance path "/")]
     (if dir-sep-index 
@@ -60,24 +75,27 @@
   (when (file? path) 
     (os/chmod path 8r755)))
 
-(defn write-to
+(defn write-to-file
   ``
-  Given `path`, confirm the file at that location exists, if it does not,
-  create it, and create any parent directories that don't already exist.
+  A version of `spit` that will create any parent directories that don't exist
+  in the given `path`.
   ``
   [path contents &opt mode]
-  (let [[path-root filename] (split-path-into-root-and-child path)]
+  (let [[path-root filename] (split-path-into-base-and-child path)]
+    (default contents "")
     (do
       (mkdir-p path-root)
       (spit path contents mode))))
 
-(defn exists?
-  [path]
-  (truthy? (os/stat path)))
-
-(defn- not-nil? [x] (not= nil x))
-
 (defn mode-of [path] (os/stat path :mode))
+
+(defn- find-pattern
+  [pattern]
+  (partial find |(peg/match pattern $)))
+
+(defn- nil-or-equals?
+  [subject equality-target]
+  (or (nil? subject) (= subject equality-target)))
 
 (defn dir-has-child?
   ``
@@ -87,7 +105,13 @@
   ``
   [path pattern &opt mode]
   (let [pat (peg/compile pattern)
-        is-mode? |(or (nil? mode) (= (mode-of $) mode))
-        child (find |(peg/match pat $) (os/dir path) nil)
+        is-mode? |(nil-or-equals? mode (mode-of $))
+        child ((find-pattern pat) (os/dir path))
         child-path (when child (string path "/" child))]
-    (and child (is-mode? child-path))))
+    (and (truthy? child) (is-mode? child-path))))
+
+(defn create-new-executable-file
+  [path &opt contents]
+  (do
+    (write-to-file path contents)
+    (make-executable path)))
