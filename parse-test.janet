@@ -4,7 +4,7 @@
   (ap/argparse "my-desc" "help" {:kind :flag
                                  :short "h"
                                  :help "Run this help message"
-                                 :action :help
+                                 #:action :help
                                  :short-circuit false}
                          "new" {:kind :option
                                 :short "n"
@@ -28,20 +28,27 @@
                                   :short-ciruit false} 
                          :default {:kind :accumulate}))
 
-(def path-var-count (length (take-while |(= :default $) (opts :order))))
+(def base-arg-count (length (take-while |(= :default $) (opts :order))))
 (def 
-  [path-vars rem-defaults] 
-  [(take path-var-count (opts :default)) (drop path-var-count (opts :default))])
-(def rem-order (drop path-var-count (opts :order)))
+  [base-args rem-defaults] 
+  [(take base-arg-count (opts :default)) (drop base-arg-count (opts :default))])
+(def rem-order (drop base-arg-count (opts :order)))
 
 #(defn [target-path rest] [(take-while )])
 (pp opts)
 (print "---")
-(pp path-var-count)
-(pp path-vars)
+(pp base-arg-count)
+(pp base-args)
 (pp rem-defaults)
 (pp rem-order)
 (print "---")
+
+(defn parse-base-args
+  [& args]
+  )
+
+(defn is-directory-with-main?)
+
 (defn main 
   [& args] 
   (print "and done :^)"))
