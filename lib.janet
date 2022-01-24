@@ -19,5 +19,24 @@
                         :opening-slash-digraph 
                         (to :closing-slash-digraph) 
                         :closing-slash-digraph))
-    :main (capture :comment-block)
+    :main (capture :comment-block)})
+
+(defn has?
+  [ind pred]
+  (not-nil? (find pred ind)))
+
+(defn has-equals?
+  ``
+  Returns true if the indexable contains `val`, and false otherwise.
+  ``
+  [ind val]
+  (has? ind |(= val $)))
+
+(defn has-match?
+  ``
+  Like `has-equals?` but instead of checking for equality, it checks to see if
+  an element satisfies `peg/match`.
+  ``
+  [ind pat]
+  (has? ind |(peg/match pat $)))
 
