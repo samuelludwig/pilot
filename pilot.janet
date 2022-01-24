@@ -70,8 +70,6 @@
         helpfile-exists? (file? helpfile)]
     (if helpfile-exists? () ())))
 
-(defn- hd-tl [x] [(first x) (when (not (nil? x)) (drop 1 x))])
-
 (defn- nil-or-empty? [x] (or (nil? x) (empty? x)))
 (defn- not-nil-or-empty? [x] (not (nil-or-empty? x)))
 

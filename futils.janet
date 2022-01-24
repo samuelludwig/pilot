@@ -1,8 +1,8 @@
-(defn file-exists?
+(defn entity-exists?
   [path]
   (truthy? (os/stat path)))
 
-(defn- not-nil? [x] (not= nil x))
+(defn- lib/not-nil? [x] (not= nil x))
 
 (defn file? [path] 
   (= (os/stat path :mode) :file))
@@ -11,8 +11,9 @@
   [path]
   (let [fstats (os/stat path)]
     (and 
+      fstats
       (= (fstats :mode) :file)
-      (not-nil? (string/find "x" (fstats :permissions))))))
+      (lib/not-nil? (string/find "x" (fstats :permissions))))))
 
 (defn dir? [path] (= (os/stat path :mode) :directory))
 

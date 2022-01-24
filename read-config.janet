@@ -1,3 +1,6 @@
+(use ./lib)
+(import ./futils :as fs)
+
 (defn- keywordize-keys
   [tab]
   (let [[ks vs] [(keys tab) (values tab)]]
@@ -10,7 +13,7 @@
 (defn- to-lines
   "Splits a multi-line string into an array of string, one for each line."
   [s]
-  (string/split "\n" s))
+  (if s (string/split "\n" s) []))
 
 (defn- parse-key-value
   ``
@@ -67,19 +70,12 @@
    :pilot-editor (or (os/getenv "VISUAL") (os/getenv "EDITOR") "vi")
    :copier-integration false})
 
-(def config-buffer 
-  (let [file (file/open (string config-location "/config.cfg") :r)
-        contents (file/read file :all)]
-    (file/close file)
-    contents))
+(def config-file (string config-location "/config.cfg"))
 
 (def settings 
   "Settings derived from the config file"
- (if 
-   (nil? config-buffer) 
-   config-defaults 
-   (merge 
-     config-defaults 
-     (parse-config-buffer config-buffer))))
+  (merge 
+    config-defaults 
+    (parse-config-buffer (fs/read-all config-file))))
 
 (def script-path (settings :script-path))
