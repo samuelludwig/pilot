@@ -66,6 +66,7 @@
 
 (def config-defaults 
   {:script-path (string config-location "/scripts")
+   :template-path (string config-location "/templates")
    :cat-provider "bat"
    :pilot-editor (or (os/getenv "VISUAL") (os/getenv "EDITOR") "vi")
    :copier-integration false})

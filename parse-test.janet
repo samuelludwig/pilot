@@ -3,6 +3,11 @@
 (import ./futils :as fs)
 (use ./lib)
 
+``
+`target` is an array of arguments, which can be composed of either path
+segments, or script arguments, or both
+``
+
 (defn- pathify
   ``
   Join an array of strings with the proper directory separator relative to the
@@ -10,8 +15,10 @@
   ``
   [& parts]
   (string/join 
-    ;parts
+    parts
     (if (= (os/which) :windows) "\\" "/")))
+
+(def settings conf/settings)
 
 (def opts 
   (ap/argparse 
@@ -36,8 +43,18 @@
     "new" {:kind :flag #technically an option but we treat it differently
            :short "n"
            :help "Create a new script"
-          # :action (print "I own a cat")
+           #:action (print "I own a cat")
            :short-ciruit false} 
+    "template" {:kind :option
+                :short "t"
+                :help "Used with `--new` to indicate the path of the template to use"
+                #:action (print "I own a cat")
+                :short-ciruit false
+                :default "default"} 
+    "no-template" {:kind :option
+                   :help "Used with `--new` to make the new script in a blank file"
+                   #:action (print "I own a cat")
+                   :short-ciruit false} 
     "cat" {:kind :flag
            :short "c"
            :help "cat"
@@ -46,12 +63,12 @@
     "edit" {:kind :flag
             :short "e"
             :help "Open a script in the configured editor"
-           # :action (print "Making a new script")
+            #:action (print "Making a new script")
             :short-ciruit false} 
     "which" {:kind :flag
              :short "w"
              :help "print location of a script"
-           #  :action (print "Making a new script")
+             #:action (print "Making a new script")
              :short-ciruit false} 
     :default {:kind :accumulate}))
 
@@ -60,7 +77,7 @@
   Flags that change some behavior, but have no explicit action associated with
   them.
   ``
-  ["base" "local"])
+  ["base" "local" "template" "no-template"])
 
 (def script-directory 
   ``
@@ -72,7 +89,26 @@
   (cond
     (opts "base") (opts "base")
     (opts "local") "./"
-    (conf/settings :script-path)))
+    (settings :script-path)))
+
+(def template-directory
+  ``
+  The root path where our templates are stored/referenced from.
+  TODO?
+  ``
+  (settings :template-path))
+
+(def template-path
+  ``
+  The root path where our scripts are stored/referenced from.
+
+  Subsequent calls to `base` or `local` will not affect the value of
+  script-directory.
+  ``
+  (or (opts "template") (settings :template-path)))
+
+(def template 
+  (if (opts :no-template) "" (fs/read-all template-path)))
 
 (def debased-order 
   (filter 
@@ -117,6 +153,7 @@
   (let [has-main? (partial has-equals? "main")]
     (and 
       (fs/entity-exists? path) 
+      (fs/dir? path)
       (has-main? (os/dir path)) 
       (fs/executable-file? 
         (pathify path "main")))))
@@ -154,9 +191,9 @@
   (let [path-append (partial pathify path)
         [next-arg rem-args] (hd-tl args)]
     (cond
-      (empty? args) [path []]
-      (fs/executable-file? path) [path args] #run
       (is-directory-with-main? path) [(path-append "main") args] #run
+      (fs/executable-file? path) [path args] #run
+      (empty? args) [path []]
       (fs/dir? path) (split-into-path-and-args rem-args (path-append next-arg))
       [(path-append ;args) []]))) # not executing (we can no longer make a valid existing path), therefore we don't have args
 
@@ -174,44 +211,105 @@
   (partial 
     meets-any-criteria? [fs/entity-does-not-exist? fs/not-executable-file?]))
 
+(defn open-in-editor
+  [path]
+  (os/execute [(settings :pilot-editor) path] :p))
+
+(def append-to-script-directory (partial pathify script-directory))
+
+(defn build-target-path-from-segment-list
+  [target]
+  (first (split-into-path-and-args target)))
+
+(defn run-cat 
+  [target] 
+  (let [path (build-target-path-from-segment-list target)]
+    (os/execute [(settings :cat-provider) path] :p)))
+
+(defn run-edit 
+  [target]
+  (let [path (build-target-path-from-segment-list target)]
+    (open-in-editor path)))
+
+(defn run-which 
+  [target]
+  (os/execute ["echo" (build-target-path-from-segment-list target)]))
+
 (defn dir-help [target]
   (let [has-helpfile? (is-directory-with-dot-help? target)]
     (if has-helpfile? 
-      (cat-command (pathify target ".help"))
+      (run-cat (pathify target ".help"))
       ())))
 
 (defn script-help [target]
   (let [has-helpfile? ()]
     (if has-helpfile? 
-      (cat-command (pathify target "TODO.help"))
+      (run-cat (pathify target "TODO.help"))
       ())))
 
 (defn write-help 
+  ``
+  Dispatch to the correct write-help-function
+  ``
   [help-type target &opt data]
   (case help-type
     :invalid-path (string target " is not reachable")
     :dir-help (dir-help target)
-    :script-help (script-help target)))
+    :script-help (script-help target)
+    :undefined (string "Oh dear, I honestly have no idea what's gone wrong... " target)))
 
-(defn run-command [target] 
+(defn run-help 
+  ``
+  Determine the help-type and pass it, the target path, and any other pertinent
+  data along to the write-help function.
+  ``
+  [target &opt args]
+  (cond
+    (fs/entity-does-not-exist? target) (write-help :invalid-path target)
+    (fs/dir? target) (write-help :dir-help target)
+    (fs/not-executable-file? target) (run-cat target)
+    (write-help :undefined [target ;args] :p)))
+
+(defn run-new
+  ``
+  Creates a file at `path` if one does not already exist, loads it with
+  <template>, and then runs the edit command. It then chmods the file to be
+  executable. 
+  If arguments are given, they become the body of the script instead of the
+  template, and the script is not opened in the editor.
+  `` 
+  [path & args]
+  (let [template-provided? (neither? "" nil template) #NOTE: Currently unused
+        contents (string template (join-with " " ;args))]
+    (if (fs/entity-does-not-exist? path) 
+      (do 
+        (fs/create-new-executable-file path contents)
+        (pp path)
+        (pp contents)
+        (run-edit [path]))
+      (run-help path))))
+
+(defn run-script [target] 
   (let [[path args] (split-into-path-and-args target)]
     (cond
-      (fs/entity-does-not-exist? path) (help-command target)
-      (fs/dir?) (help-command target)
-      (fs/not-executable-file? path) (cat-command target)
+      (fs/entity-does-not-exist? path) (run-help path)
+      (fs/dir? path) (run-help path)
+      (fs/not-executable-file? path) (run-cat path)
       (os/execute [path ;args] :p))))
 
 (defn dispatch-command
   [command-flag command-args target]
   (case command-flag
-    nil (run-command target)
-    "new" (new-command target ;command-args)
-    "edit" (edit-command target)
-    "which" (which-command target)
-    "cat" (cat-command target)
-    "help" (help-command target)
-    (help-command target)))
+    nil (run-script target)
+    "new" (run-new (build-target-path-from-segment-list [;target ;command-args]))
+    "edit" (run-edit target)
+    "which" (run-which target)
+    "cat" (run-cat target)
+    "help" (run-help target)
+    (run-help target)))
 
 (defn main 
   [& args] 
-  (print "and done :^)"))
+  (do
+    (dispatch-command command-flag command-args target-args)))
+

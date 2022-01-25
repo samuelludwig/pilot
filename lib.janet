@@ -94,3 +94,5 @@
 (defn drop-from [x & inds]
   (map |(drop x $) [;inds]))
 
+(defn nil-or-empty? [x] (or (nil? x) (empty? x)))
+(def not-nil-or-empty? (complement nil-or-empty?))
