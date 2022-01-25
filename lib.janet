@@ -21,6 +21,20 @@
                         :closing-slash-digraph))
     :main (capture :comment-block)})
 
+(defn test-predicates
+  [predicates subject]
+  (map |($ subject) predicates))
+
+(defn meets-all-criteria? 
+  [predicates subject]
+  (all true?
+    (test-predicates predicates subject)))
+
+(defn meets-any-criteria?
+  [predicates subject]
+  (truthy? 
+    (any? (test-predicates predicates subject))))
+
 (def not-nil? (complement nil?))
 
 (defn has?
@@ -51,12 +65,22 @@
   [x ind] 
   [(take x ind) (drop x ind)])
 
+(def none? (complement any?))
+
+(defn any-of?
+  [xs subject]
+  (any? (map |(= $ subject) xs)))
+
+(defn none-of?
+  [xs subject]
+  (none? (map |(= $ subject) xs)))
+
 (defn either? 
   ``
   Checks if `subject` is equal to either `x` or `y`
   ``
   [x y subject]
-  (or (= x subject) (= y subject)))
+  (any-of? [x y] subject))
 
 (defn neither? [x y subject] (not (either? x y subject)))
 
@@ -66,3 +90,7 @@
 (defn join-with
   [sep & parts]
   (string/join parts sep))
+
+(defn drop-from [x & inds]
+  (map |(drop x $) [;inds]))
+

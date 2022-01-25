@@ -1,6 +1,13 @@
+(defn split-filename-and-ext 
+  [path]
+  (let [is-dotfile? (string/has-prefix? "." path)]
+    (if is-dotfile? path (string/split "." path 0 2))))
+
 (defn entity-exists?
   [path]
   (truthy? (os/stat path)))
+
+(def entity-does-not-exist? (complement entity-exists?))
 
 (defn- lib/not-nil? [x] (not= nil x))
 
@@ -14,6 +21,8 @@
       fstats
       (= (fstats :mode) :file)
       (lib/not-nil? (string/find "x" (fstats :permissions))))))
+
+(def not-executable-file? (complement executable-file?))
 
 (defn dir? [path] (= (os/stat path :mode) :directory))
 
