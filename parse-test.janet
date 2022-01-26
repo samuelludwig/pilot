@@ -79,17 +79,18 @@ segments, or script arguments, or both
   ``
   ["base" "local" "template" "no-template"])
 
-(def script-directory 
+(defn determine-script-directory 
   ``
   The root path where our scripts are stored/referenced from.
 
   Subsequent calls to `base` or `local` will not affect the value of
   script-directory.
   ``
+  [base-settings opts]
   (cond
     (opts "base") (opts "base")
     (opts "local") "./"
-    (settings :script-path)))
+    (base-settings :script-path)))
 
 (def template-directory
   ``
@@ -115,9 +116,12 @@ segments, or script arguments, or both
     |(neither? "base" "local" $) 
     (opts :order)))
 
-(def target-arg-count 
-  (length 
-    (take-while |(= :default $) debased-order)))
+(defn count-while
+  [pred ind]
+  (let [take-trues (partial take-while pred)]
+    (-> ind 
+        take-trues
+        length)))
 
 (def [target-args command-args command-order]
   ``
@@ -125,8 +129,9 @@ segments, or script arguments, or both
   NOTE: Technically, they should only be populated if the `new` flag is given,
   at least for now.
   ``
-  [;(break-off target-arg-count (opts :default))
-   (drop target-arg-count debased-order)])
+  (let [target-arg-count (count-while |(= :default $) debased-order)]
+    [;(break-off target-arg-count (opts :default))
+     (drop target-arg-count debased-order)]))
 
 (def command-flag 
   ``
@@ -148,6 +153,14 @@ segments, or script arguments, or both
   the arguments we want to pass on to that flags associated action.
   ``
   (filter |(= :default $) command-order))
+
+(def parameters
+  {:target target
+   :command-flag command-flag
+   :command-args command-args
+   :script-directory (determine-script-directory settings opts)
+   :template-directory (settings :template-path) 
+   :template-file (if (opts :no-template) "" (fs/read-all (string (settings :template-path) "/default")))})
 
 (defn is-directory-with-main? [path]
   (let [has-main? (partial has-equals? "main")]
@@ -196,8 +209,6 @@ segments, or script arguments, or both
       (empty? args) [path []]
       (fs/dir? path) (split-into-path-and-args rem-args (path-append next-arg))
       [(path-append ;args) []]))) # not executing (we can no longer make a valid existing path), therefore we don't have args
-
-#(def [target-location script-args] (split-into-path-and-args target-args))
 
 (pp opts)
 (print "---")
@@ -299,6 +310,8 @@ segments, or script arguments, or both
 
 (defn dispatch-command
   [command-flag command-args target]
+  (pp target)
+  (quit)
   (case command-flag
     nil (run-script target)
     "new" (run-new (build-target-path-from-segment-list [;target ;command-args]))
