@@ -154,13 +154,17 @@ segments, or script arguments, or both
   ``
   (filter |(= :default $) command-order))
 
-(def parameters
-  {:target target
-   :command-flag command-flag
-   :command-args command-args
-   :script-directory (determine-script-directory settings opts)
-   :template-directory (settings :template-path) 
-   :template-file (if (opts :no-template) "" (fs/read-all (string (settings :template-path) "/default")))})
+(defn parameters
+  [opts]
+  (let [using-template? (not (opts :no-template))
+        template-location (string (settings :template-path) "/default")
+        template (when using-template? (fs/read-all template-location))]
+    {:target target-args
+     :command-flag command-flag
+     :command-args command-args
+     :script-directory (determine-script-directory settings opts)
+     :template-directory (settings :template-path)
+     :template-file template}))
 
 (defn is-directory-with-main? [path]
   (let [has-main? (partial has-equals? "main")]
@@ -200,7 +204,7 @@ segments, or script arguments, or both
   may or may not be valid.
   ``
   [args &opt path]
-  (default path script-directory)
+  (default path ((parameters opts) :script-directory))
   (let [path-append (partial pathify path)
         [next-arg rem-args] (hd-tl args)]
     (cond
@@ -226,7 +230,7 @@ segments, or script arguments, or both
   [path]
   (os/execute [(settings :pilot-editor) path] :p))
 
-(def append-to-script-directory (partial pathify script-directory))
+(def append-to-script-directory (partial pathify (parameters :script-directory)))
 
 (defn build-target-path-from-segment-list
   [target]
@@ -295,8 +299,6 @@ segments, or script arguments, or both
     (if (fs/entity-does-not-exist? path) 
       (do 
         (fs/create-new-executable-file path contents)
-        (pp path)
-        (pp contents)
         (run-edit [path]))
       (run-help path))))
 
@@ -309,20 +311,23 @@ segments, or script arguments, or both
       (os/execute [path ;args] :p))))
 
 (defn dispatch-command
-  [command-flag command-args target]
-  (pp target)
+  [params]
+  (pp params)
   (quit)
-  (case command-flag
-    nil (run-script target)
-    "new" (run-new (build-target-path-from-segment-list [;target ;command-args]))
-    "edit" (run-edit target)
-    "which" (run-which target)
-    "cat" (run-cat target)
-    "help" (run-help target)
-    (run-help target)))
+  (let [command-flag (params :command-flag)
+        target (params :target)
+        command-args (params :command-args)]
+    (case command-flag
+      nil (run-script target)
+      "new" (run-new (build-target-path-from-segment-list [;target ;command-args]))
+      "edit" (run-edit target)
+      "which" (run-which target)
+      "cat" (run-cat target)
+      "help" (run-help target)
+      (run-help target))))
 
 (defn main 
   [& args] 
   (do
-    (dispatch-command command-flag command-args target-args)))
+    (dispatch-command parameters)))
 
