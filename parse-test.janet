@@ -14,6 +14,7 @@ segments, or script arguments, or both
   OS.
   ``
   [& parts]
+  (pp parts)
   (string/join 
     parts
     (if (= (os/which) :windows) "\\" "/")))
@@ -154,17 +155,20 @@ segments, or script arguments, or both
   ``
   (filter |(= :default $) command-order))
 
-(defn parameters
+(defn define-parameters
   [opts]
+  ``
+  :target will either be a group of path segments, or a group of path segments
+  and arguments to pass to the script at the given path
+  ``
   (let [using-template? (not (opts :no-template))
-        template-location (string (settings :template-path) "/default")
-        template (when using-template? (fs/read-all template-location))]
-    {:target target-args
+        template-location (string (settings :template-path) "/default")]
+    {:target target-args 
      :command-flag command-flag
      :command-args command-args
      :script-directory (determine-script-directory settings opts)
      :template-directory (settings :template-path)
-     :template-file template}))
+     :template-file (when using-template? template-location)}))
 
 (defn is-directory-with-main? [path]
   (let [has-main? (partial has-equals? "main")]
@@ -204,7 +208,7 @@ segments, or script arguments, or both
   may or may not be valid.
   ``
   [args &opt path]
-  (default path ((parameters opts) :script-directory))
+  (default path ((define-parameters opts) :script-directory))
   (let [path-append (partial pathify path)
         [next-arg rem-args] (hd-tl args)]
     (cond
@@ -214,23 +218,17 @@ segments, or script arguments, or both
       (fs/dir? path) (split-into-path-and-args rem-args (path-append next-arg))
       [(path-append ;args) []]))) # not executing (we can no longer make a valid existing path), therefore we don't have args
 
-(pp opts)
-(print "---")
-(pp target-args)
-(pp command-args)
-(pp command-order)
-(pp (split-into-path-and-args target-args))
-(print "---")
-
 (def invalid-path? 
   (partial 
     meets-any-criteria? [fs/entity-does-not-exist? fs/not-executable-file?]))
 
 (defn open-in-editor
   [path]
+  (print "###")
+  (pp path)
   (os/execute [(settings :pilot-editor) path] :p))
 
-(def append-to-script-directory (partial pathify (parameters :script-directory)))
+(def append-to-script-directory (partial pathify (( define-parameters opts ) :script-directory)))
 
 (defn build-target-path-from-segment-list
   [target]
@@ -241,14 +239,11 @@ segments, or script arguments, or both
   (let [path (build-target-path-from-segment-list target)]
     (os/execute [(settings :cat-provider) path] :p)))
 
-(defn run-edit 
-  [target]
-  (let [path (build-target-path-from-segment-list target)]
-    (open-in-editor path)))
+(defn run-edit [path] (open-in-editor path))
 
 (defn run-which 
-  [target]
-  (os/execute ["echo" (build-target-path-from-segment-list target)]))
+  [path]
+  (os/execute ["echo" path]))
 
 (defn dir-help [target]
   (let [has-helpfile? (is-directory-with-dot-help? target)]
@@ -279,11 +274,12 @@ segments, or script arguments, or both
   data along to the write-help function.
   ``
   [target &opt args]
-  (cond
-    (fs/entity-does-not-exist? target) (write-help :invalid-path target)
-    (fs/dir? target) (write-help :dir-help target)
-    (fs/not-executable-file? target) (run-cat target)
-    (write-help :undefined [target ;args] :p)))
+  (let [target-path (build-target-path-from-segment-list target)]
+    (cond
+      (fs/entity-does-not-exist? target-path) (write-help :invalid-path target-path)
+      (fs/dir? target-path) (write-help :dir-help target-path)
+      (fs/not-executable-file? target-path) (run-cat target-path)
+      (write-help :undefined [target-path ;args] :p))))
 
 (defn run-new
   ``
@@ -292,6 +288,9 @@ segments, or script arguments, or both
   executable. 
   If arguments are given, they become the body of the script instead of the
   template, and the script is not opened in the editor.
+  
+  TODO maybe prompt to confirm if we need to make new parent directories, in
+  case a name gets typo'ed?
   `` 
   [path & args]
   (let [template-provided? (neither? "" nil template) #NOTE: Currently unused
@@ -299,7 +298,7 @@ segments, or script arguments, or both
     (if (fs/entity-does-not-exist? path) 
       (do 
         (fs/create-new-executable-file path contents)
-        (run-edit [path]))
+        (run-edit path))
       (run-help path))))
 
 (defn run-script [target] 
@@ -311,23 +310,35 @@ segments, or script arguments, or both
       (os/execute [path ;args] :p))))
 
 (defn dispatch-command
+  ``
+  Maybe I should just send the `params` to each command function?
+  ``
   [params]
-  (pp params)
-  (quit)
   (let [command-flag (params :command-flag)
         target (params :target)
-        command-args (params :command-args)]
+        command-args (params :command-args)
+        script-dir (params :script-directory)
+        target-path (pathify script-dir ;target)]
     (case command-flag
       nil (run-script target)
-      "new" (run-new (build-target-path-from-segment-list [;target ;command-args]))
-      "edit" (run-edit target)
-      "which" (run-which target)
-      "cat" (run-cat target)
-      "help" (run-help target)
-      (run-help target))))
+      "new" (run-new target-path command-args)
+      "edit" (run-edit target-path)
+      "which" (run-which target-path)
+      "cat" (run-cat target-path)
+      "help" (run-help target params)
+      (run-help target params))))
+
+(pp opts)
+(print "---")
+(pp target-args)
+(pp command-args)
+(pp command-order)
+(pp (split-into-path-and-args target-args))
+(print "---")
 
 (defn main 
   [& args] 
   (do
-    (dispatch-command parameters)))
+    (dispatch-command 
+      (define-parameters opts))))
 

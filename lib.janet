@@ -89,7 +89,7 @@
 
 (defn join-with
   [sep & parts]
-  (string/join parts sep))
+  (string/join [;parts] sep))
 
 (defn drop-from [x & inds]
   (map |(drop x $) [;inds]))
