@@ -1,238 +1,294 @@
-# What I hope to be my personal command line assistant
-# A bastardization of ianthehenry/sd
-# For scripts, we can reliably use $0 to determine the script's location, as we
-# use a script's absolute path to invoke it.
-
-# TODO's
-# - For the `script-path` make this actually get a PATH-like path from the
-# config and create the logic around all that stuff
-# - Add logic for actually accessing/parsing the config file
-# - Copier integration for `command-new`, allow different lang templates and
-# whatnot
-# I'd like to be able to have multiple flags passed to pilot, currently it only
-# reads one
-# - Have the --new flag take a type of script in order to determine the
-# template to use?
-# - Add a check to see if a file is executable by the current user via uid/gid/permissions?
-# - Let a directory with a `main` file act as a script?
-
-#
-# First we gather our configs
-#
-
-# (import ./argparse :as cli-args)
-(import ./futils :as fs)
+(import ./argparse :as ap)
 (import ./read-config :as conf)
+(import ./futils :as fs)
+(use ./lib)
+
+``
+`target` is an array of arguments, which can be composed of either path
+segments, or script arguments, or both
+``
+
+(def path-separator 
+  (if (= (os/which) :windows) "\\" "/"))
+
+(defn- pathify
+  ``
+  Join an array of strings with the proper directory separator relative to the
+  OS.
+  ``
+  [& parts]
+  (string/join parts path-separator))
+
+(defn- is-directory-with-main? [path]
+  (let [has-main? (partial has-equals? "main")]
+    (and 
+      (fs/entity-exists? path) 
+      (fs/dir? path)
+      (has-main? (os/dir path)) 
+      (fs/executable-file? 
+        (pathify path "main")))))
+
+(defn- is-directory-with-dot-help? [path]
+  (let [has-dot-help? (partial has-equals? ".help")]
+    (and 
+      (fs/entity-exists? path) 
+      (has-dot-help? (os/dir path)))))
+
+(defn- mainpath-of
+  [path]
+  (let [path-append (partial pathify path)]
+    (if (is-directory-with-main? path) 
+      (path-append "main") 
+      path)))
+
 (def settings conf/settings)
 
-(defn- stat-of
-  [f stat]
-  (get-in f [:fstats stat]))
+(def opts 
+  (ap/argparse 
+    ``
+    Describe script here
+    `` 
+    "help" {:kind :flag #TODO a bit more complicated
+            :short "h"
+            :help "Run this help message"
+            #:action :help
+            :short-circuit false}
+    "base" {:kind :option
+            :short "b"
+            :help "Define a temporary script directory location for this command"
+            #:action :help
+            :short-circuit false}
+    "local" {:kind :flag
+            :short "l"
+            :help "Shortcut for `--base ./`"
+            #:action :help
+            :short-circuit false}
+    "new" {:kind :flag #technically an option but we treat it differently
+           :short "n"
+           :help "Create a new script"
+           #:action (print "I own a cat")
+           :short-ciruit false} 
+    "template" {:kind :option
+                :short "t"
+                :help "Used with `--new` to indicate the path of the template to use"
+                #:action (print "I own a cat")
+                :short-ciruit false
+                :default "default"} 
+    "no-template" {:kind :option
+                   :help "Used with `--new` to make the new script in a blank file"
+                   #:action (print "I own a cat")
+                   :short-ciruit false} 
+    "cat" {:kind :flag
+           :short "c"
+           :help "cat"
+           #:action (print "Making a new script")
+           :short-ciruit false} 
+    "edit" {:kind :flag
+            :short "e"
+            :help "Open a script in the configured editor"
+            #:action (print "Making a new script")
+            :short-ciruit false} 
+    "which" {:kind :flag
+             :short "w"
+             :help "print location of a script"
+             #:action (print "Making a new script")
+             :short-ciruit false} 
+    "debug" {:kind :flag
+             :help "Print out debug info in addition to normal output"
+             #:action (print "Making a new script")
+             :short-ciruit false} 
+    :default {:kind :accumulate}))
 
-(def flag '(choice "-" "--")) # Technically double-hyphen is redundant
-(defn flag? [s] (truthy? (peg/match flag s)))
-(defn file? [f] 
-  (= (stat-of f :mode) :file))
-(defn dir? [f] 
-  (= (stat-of f :mode) :dir))
-(defn executable? [f] 
-  (not 
-    (nil? (string/find "x" (stat-of f :permissions)))))
-(defn executable-file? [f] 
-  (and (file? f) (executable? f)))
-
-(defn- load-file
+(def modifier-flags 
   ``
-  Given `path`, return a datastructure containing the core/file located at that
-  path, os stats for the file, and the original path given.
+  Flags that change some behavior, but have no explicit action associated with
+  them.
   ``
-  [path &opt mode]
-  {:fstats (os/stat path)
-   :file (if mode (file/open path mode) (file/open path) ) 
-   :path path})
+  ["base" "local" "template" "no-template" "debug"])
 
-(defn- close-file 
-  [f] 
-  (if (file? f) 
-    (file/close (f :file))
-    nil))
+(defn determine-script-directory 
+  ``
+  The root path where our scripts are stored/referenced from.
 
-(defn- append-to-file [f text] (file/write (f :file) text))
+  Subsequent calls to `base` or `local` will not affect the value of
+  script-directory.
+  ``
+  [base-settings opts]
+  (cond
+    (opts "base") (opts "base")
+    (opts "local") "./"
+    (base-settings :script-path)))
 
-(defn- read-file [f] (file/read (f :file) :all))
+(def template-directory
+  ``
+  The root path where our templates are stored/referenced from.
+  TODO?
+  ``
+  (settings :template-path))
 
-(defn- directory-help
-  [f]
-  (let [target (f :path) 
-        append |(string target $)
-        helpfile-path (if (dir? f) (append "/.help") (append ".help"))
-        helpfile (load-file helpfile-path :r)
-        helpfile-exists? (file? helpfile)]
-    (if helpfile-exists? () ())))
+(def template-path
+  ``
+  The root path where our scripts are stored/referenced from.
 
-(defn- nil-or-empty? [x] (or (nil? x) (empty? x)))
-(defn- not-nil-or-empty? [x] (not (nil-or-empty? x)))
+  Subsequent calls to `base` or `local` will not affect the value of
+  script-directory.
+  ``
+  (or (opts "template") (settings :template-path)))
+
+(def template 
+  (if (opts :no-template) "" (fs/read-all template-path)))
+
+(def debased-order 
+  (filter 
+    |(neither? "base" "local" $) 
+    (opts :order)))
+
+(defn count-while
+  [pred ind]
+  (let [take-trues (partial take-while pred)]
+    (-> ind 
+        take-trues
+        length)))
+
+(def [target-args command-args command-order]
+  ``
+  command-args/command-order should only be populated if a flag is specified.
+  NOTE: Technically, they should only be populated if the `new` flag is given,
+  at least for now.
+  ``
+  (let [target-arg-count (count-while |(= :default $) debased-order)]
+    [;(break-off target-arg-count (opts :default))
+     (drop target-arg-count debased-order)]))
+
+(def command-flag 
+  ``
+  The name of the first non-modifier flag passed in, `nil` if there is none.
+
+  This flag will define what action we actually perform.
+  ``
+  (first 
+    (filter 
+      |(none-of? [:default :order ;modifier-flags] $) 
+      (keys opts))))
+
+(def command-flag-provided? (not-nil? command-flag))
+
+(def deflagged-order
+  ``
+  We only want to pay mind to the first flag thats passed through, so we're
+  going to discard all the others. The remaining order should consist of all
+  the arguments we want to pass on to that flags associated action.
+  ``
+  (filter |(= :default $) command-order))
+
+(defn define-parameters
+  [opts]
+  ``
+  :target will either be a group of path segments, or a group of path segments
+  and arguments to pass to the script at the given path
+  ``
+  (let [using-template? (not (opts :no-template))
+        template-location (string (settings :template-path) "/default")]
+    {:target target-args 
+     :command-flag command-flag
+     :command-args command-args
+     :script-directory (determine-script-directory settings opts)
+     :template-directory (settings :template-path)
+     :template-file (when using-template? template-location)}))
+
+# If no flags are specified (meaning command-args/order are also both empty,
+# and we actually want to 'run' something), we need to parse the target args
+# and break it up into the script path, and the arguments to the script.
+
+# If a --new, --edit, --which, --cat, or --help flag is specified, all the
+# target args should be considered the location of the subject only.
+
+(defn split-into-path-and-args
+  ``
+  Given a sequential array of arguments, determine which arguments are suitable
+  to consider as part of a filepath, and which, if any, ought to be interpreted
+  as script arguments.
+
+  There are two cases in which we may have a populated array of script
+  arguments:
+
+  A. `path` resolves to an executable file
+  B. `path` resolves to a directory that contains a file with the name `main`
+
+  All other cases will result in an empty array of script args, and a path that
+  may or may not be valid.
+  ``
+  [args &opt path]
+  (default path ((define-parameters opts) :script-directory))
+  (let [path-append (partial pathify path)
+        [next-arg rem-args] (hd-tl args)]
+    (cond
+      (is-directory-with-main? path) [(path-append "main") args] #run
+      (fs/executable-file? path) [path args] #run
+      (empty? args) [path []]
+      (fs/dir? path) (split-into-path-and-args rem-args (path-append next-arg))
+      [(path-append ;args) []]))) # not executing (we can no longer make a valid existing path), therefore we don't have args
+
+(def invalid-path? 
+  (partial 
+    meets-any-criteria? [fs/entity-does-not-exist? fs/not-executable-file?]))
 
 (defn open-in-editor
   [path]
-  (os/execute [(settings :pilot-editor) path] :p))
+  (os/execute [(settings :pilot-editor) (mainpath-of path)] :p))
 
-(defn make-file
+(def append-to-script-directory (partial pathify (( define-parameters opts ) :script-directory)))
+
+(defn build-target-path-from-segment-list
+  [target]
+  (first (split-into-path-and-args target)))
+
+(defn run-cat 
   [path]
-  (let [[base-path script-name] (fs/split-path-into-base-and-child path)]
-    (do 
-      (fs/mkdir-p base-path)
-      (os/open (string base-path "/" script-name) :c))))
+  (os/execute [(settings :cat-provider) (mainpath-of path)] :p))
 
-(defn create-new-executable-file
+(defn run-edit [path] (open-in-editor path))
+
+(defn run-which 
   [path]
-  (do 
-    (make-file path)
-    (os/chmod path 8r755)))
+  (os/execute ["echo" path] :p))
 
-(defn touch-chmod-and-open
-  [path]
-  (fs/create-new-executable-file path)
-  (open-in-editor path))
+(defn dir-help [path]
+  (let [has-helpfile? (is-directory-with-dot-help? path)]
+    (if has-helpfile? 
+      (run-cat (pathify path ".help"))
+      (join-with "\n" ;(os/dir path))))) # TODO, add appending of quick help info
 
-(defn- read-template-file 
-  [template-path] 
-  (fs/read-all template-path))
+(defn script-help [target]
+  (let [has-helpfile? nil]
+    (if has-helpfile? 
+      (fs/read-all (pathify target "TODO.help"))
+      (fs/read-all (pathify target)))))
 
-(defn create-file-from-template
-  [path template-path &opt additional-content]
-  (let [template (read-template-file template-path)
-        contents (string template additional-content)]
-    (fs/create-executable-file path contents)))
+(defn write-help 
+  ``
+  Dispatch to the correct write-help-function
+  ``
+  [help-type target &opt data]
+  (case help-type
+    :invalid-path (string target " is not reachable")
+    :dir-help (dir-help target)
+    :script-help (script-help target)
+    :undefined (string "Oh dear, I honestly have no idea what's gone wrong... " target)))
 
-(defn take-until-pattern [ind pattern]
-  (take-until |(string/find pattern $) ind))
-
-# the default behavior for `sd foo bar` is:
-# 
-# - if `~/sd/foo` is an executable file, execute `~/sd/foo bar`.
-# - if `~/sd/foo/bar` is an executable file, execute it with no arguments.
-# - if `~/sd/foo/bar` is a directory, this is the same is `sd foo bar --help` 
-# (see below).
-# - if `~/sd/foo/bar` is a non-executable regular file, this is the same is 
-# `sd foo bar --cat` (see below).
-# 
-# there are some special flags that are significant to `sd`. if you supply any
-# one of these arguments, `sd` will not invoke your script, and will do
-# something fancier instead.
-# 
-#     $ sd foo bar --help
-#     $ sd foo bar --new
-#     $ sd foo bar --edit
-#     $ sd foo bar --cat
-#     $ sd foo bar --which
-#     $ sd foo bar --really
-(defn parse-command 
-  [first-arg &opt remaining-args]
-  (let [[next-arg rem] (hd-tl remaining-args)
-        new-path (string first-arg "/" next-arg)
-        real-path (string (settings :script-path) "/" first-arg)
-        fstats (os/stat real-path)]
+(defn run-help 
+  ``
+  Determine the help-type and pass it, the target path, and any other pertinent
+  data along to the write-help function.
+  ``
+  [target &opt args]
+  (let [target-path (build-target-path-from-segment-list target)]
     (cond
-      # if there's no remaining arguments, our path is done, handle it
-      # according to the logic above
-      (nil-or-empty? remaining-args) {:path first-arg}
-
-      # if the next argument is a flag, we pass our path, the flag, and the
-      # remaining arguments to a flag-handling function
-      # we will need to search for a --really flag in `arguments` in the
-      # flag-handling function
-      (flag? next-arg) {:path first-arg :flag next-arg :arguments rem}
-
-      # if our path is an executable file, we want to run it, with the
-      # remaining arguments passed to it
-      # what happens in the case where we want to define a "new" script that
-      # has a parent directory the same name of an executable?
-      (executable-file? (load-file real-path)) {:path first-arg :arguments remaining-args}
-
-      (parse-command new-path rem))))
-
-(defn with-default 
-  [x default-val] 
-  (if (nil? x) default-val x))
-
-# commands
-# [x] run-script
-# [ ] run-help todo
-# [x] run-new
-# [x] run-edit
-# [x] run-cat
-# [x] run-which
-
-(defn run-help #todo
-  ``
-  if path does not exist, output a message mentioning that.
-  if path is a directory with no .help file, output a message listing each
-  script with its summary comment.
-  if path is a directory with a .help file, output a message with the .help
-  file, followed by the list mentioned above.
-  if path is a non-executable file, output a messaging noting that, and then
-  cat the file.
-  if path is an executable, output its first contiguous comment block.
-  ``
-  [path]
-  (print path " " "hello, under construction at the moment, terribly sorry...\n"))
-
-(defn run-script 
-  ``
-  if path is an executable file, run it with all the arguments given. if not,
-  run help command.
-  ``
-  [path args]
-  (let [f (load-file path)
-        exec? (executable-file? f)] 
-    (do
-      (close-file f) 
-      (if exec? 
-        (os/execute [path ;args])
-        (run-help path)))))
-
-(defn run-cat
-  ``
-  if path is a file, print it's contents to stdout using `cat-provider`,
-  otherwise, run help instead.
-  ``
-  [path]
-  (let [f (load-file path :r)
-        cattable? (file? f)
-        cat-provider (settings :cat-provider)]
-    (do 
-      (close-file f)
-      (if cattable? (os/execute [cat-provider path] :p)
-        (run-help path)))))
-
-(defn run-which
-  ``
-  if path exists, output `path`. run help otherwise.
-  `` 
-  [path]
-  (let [fstats (os/stat path :mode)]
-    (if (truthy? fstats) (os/execute ["echo" path] :p)
-      (run-help path))))
-
-(defn run-edit
-  ``
-  If path exists, open up the file with `EDITOR`. Run help otherwise.
-  TODO Check if dir?
-  `` 
-  [path]
-  (let [f (load-file path)]
-    (if (stat-of f :mode) 
-      (os/execute [(settings :pilot-editor) path] :p)
-      (run-help path))))
-
-(defn- create-new-script
-  [path template-path &opt script-body]
-  (let [body-provided? (not-nil-or-empty? script-body)]
-    (do
-      (create-file-from-template path template-path script-body)
-      (when body-provided? 
-        (run-edit path)))))
+      (fs/entity-does-not-exist? target-path) (write-help :invalid-path target-path)
+      (fs/dir? target-path) (print (write-help :dir-help target-path))
+      (fs/not-executable-file? target-path) (run-cat target-path)
+      (fs/executable-file? target-path) (print (script-help target-path))
+      (print (write-help :undefined target-path args)))))
 
 (defn run-new
   ``
@@ -241,50 +297,66 @@
   executable. 
   If arguments are given, they become the body of the script instead of the
   template, and the script is not opened in the editor.
+  
+  TODO maybe prompt to confirm if we need to make new parent directories, in
+  case a name gets typo'ed?
   `` 
-  [path &opt args]
-  (let [f (load-file path)
-        body-provided? (not-nil-or-empty? args)
-        body (if body-provided? (string/join args " ") "")
-        file-not-exists? (nil? (f :file))
-        template-path "/home/dot/.config/pilot/templates/bash/default.sh"] #TODO
-    (if file-not-exists? 
-      (create-new-script path template-path body)
+  [path params & args]
+  (let [template-provided? (neither? "" nil template) #NOTE: Currently unused
+        template (fs/read-all (params :template-file))
+        contents (string template (join-with " " ;args))]
+    (if (fs/entity-does-not-exist? path) 
+      (do 
+        (fs/create-new-executable-file path contents)
+        (run-edit path))
       (run-help path))))
 
-(defn handle-command 
-  [{:path p :flag f :arguments args :options opts}]
-  (let [args (with-default args [])
-        flag (with-default f "") # peg/match errors on nil
-        # Get root path from settings and prepend it (do we want logic for
-        # multiple possible root PATHs to look at?)
-        real-path (string (settings :script-path) "/" p)
-        file (load-file real-path)]
+(defn run-script [target] 
+  (let [[path args] (split-into-path-and-args target)]
     (cond
-      (peg/match '(choice "-v" "--verbatim") flag) (run-script real-path args)
-      (peg/match '(choice "-h" "--help") flag) (run-help real-path)
-      (peg/match '(choice "-n" "--new") flag) (run-new real-path args)
-      (peg/match '(choice "-c" "--cat") flag) (run-cat real-path)
-      (peg/match '(choice "-e" "--edit") flag) (run-edit real-path)
-      (peg/match '(choice "-w" "--which") flag) (run-which real-path)
-      (executable-file? file) (run-script real-path args)
-      (run-help real-path))))
+      (fs/entity-does-not-exist? path) (run-help target)
+      (fs/dir? path) (run-help target)
+      (fs/not-executable-file? path) (run-cat path)
+      (os/execute [path ;args] :p))))
 
-# TODO rethink of how i access files, i have a lot of functions opening and
-# closing in the interest of isolation, but it would probably be best to just
-# have them take text/file-entity instead of a filepath that they open
-# themselves
-#
-# UPDATE: I did end up reworking this, but man do I wish I knew about the
-# slurp/spit functions... though, they error when the file doesn't exist/can't
-# be reached(or rather, created, in the context of `spit`), so i dont know if i
-# want that.
+(defn dispatch-command
+  ``
+  Maybe I should just send the `params` to each command function?
+  ``
+  [params]
+  (let [command-flag (params :command-flag)
+        target (or (params :target) [""])
+        command-args (params :command-args)
+        script-dir (params :script-directory)
+        target-path (pathify script-dir ;target)]
+    (case command-flag
+      nil (run-script target)
+      "new" (run-new target-path params ;command-args)
+      "edit" (run-edit target-path)
+      "which" (run-which target-path)
+      "cat" (run-cat target-path)
+      "help" (run-help target params)
+      (run-help target params))))
 
-#(handle-command {:path "nix/version" :flag "--new" :arguments ["nix --version"]})
+(when (opts "debug")
+  (do
+    (print "\n---[OPTIONS]---\n")
+    (pp opts)
+    (print "\n---[TARGET-ARGS]---\n")
+    (pp target-args)
+    (print "\n---[COMMAND-ARGS]---\n")
+    (pp command-args)
+    (print "\n---[COMMAND-ORDER]---\n")
+    (pp command-order)
+    (print "\n---[SCRIPT-PATH-AND-ARGS-IF-EXECUTED]---")
+    (pp (split-into-path-and-args target-args))
+    (print "\n---[PARSED-PARAMS]---\n")
+    (pp (define-parameters opts))
+    (print "\n---\n")))
 
-# Expect a c
 (defn main 
   [& args] 
-  (let [exe-name (first args)
-        command (drop 1 args)]
-    (handle-command (parse-command ;(hd-tl command)))))
+  (do
+    (dispatch-command 
+      (define-parameters opts))))
+

@@ -63,6 +63,7 @@
   chunks; sort of a variable-sized head/tail split.
   ``
   [x ind] 
+  (default ind [])
   [(take x ind) (drop x ind)])
 
 (def none? (complement any?))
