@@ -1,3 +1,4 @@
+#!/usr/bin/env janet
 (import ./argparse :as ap)
 (import ./read-config :as conf)
 (import ./futils :as fs)
@@ -254,10 +255,11 @@ segments, or script arguments, or both
   (os/execute ["echo" path] :p))
 
 (defn dir-help [path]
-  (let [has-helpfile? (is-directory-with-dot-help? path)]
+  (let [has-helpfile? (is-directory-with-dot-help? path)
+        exec-or-dir? |(or (fs/dir? (pathify path $)) (fs/executable-file? (pathify path $)))]
     (if has-helpfile? 
       (run-cat (pathify path ".help"))
-      (join-with "\n" ;(os/dir path))))) # TODO, add appending of quick help info
+      (join-with "\n" ;(filter exec-or-dir? (os/dir path)))))) # TODO, add appending of quick help info
 
 (defn script-help [target]
   (let [has-helpfile? nil]
