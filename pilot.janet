@@ -1,3 +1,4 @@
+#!/usr/bin/env janet
 (import ./argparse :as ap)
 (import ./read-config :as conf)
 (import ./futils :as fs)
