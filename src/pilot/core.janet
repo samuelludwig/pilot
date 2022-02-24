@@ -9,7 +9,7 @@
 segments, or script arguments, or both
 ``
 
-(def path-separator 
+(def path-separator
   (if (= (os/which) :windows) "\\" "/"))
 
 (defn- pathify
@@ -22,33 +22,33 @@ segments, or script arguments, or both
 
 (defn- is-directory-with-main? [path]
   (let [has-main? (partial has-equals? "main")]
-    (and 
-      (fs/entity-exists? path) 
+    (and
+      (fs/entity-exists? path)
       (fs/dir? path)
-      (has-main? (os/dir path)) 
-      (fs/executable-file? 
+      (has-main? (os/dir path))
+      (fs/executable-file?
         (pathify path "main")))))
 
 (defn- is-directory-with-dot-help? [path]
   (let [has-dot-help? (partial has-equals? ".help")]
-    (and 
-      (fs/entity-exists? path) 
+    (and
+      (fs/entity-exists? path)
       (has-dot-help? (os/dir path)))))
 
 (defn- mainpath-of
   [path]
   (let [path-append (partial pathify path)]
-    (if (is-directory-with-main? path) 
-      (path-append "main") 
+    (if (is-directory-with-main? path)
+      (path-append "main")
       path)))
 
 (def settings conf/settings)
 
-(def opts 
-  (ap/argparse 
+(def opts
+  (ap/argparse
     ``
     Describe script here
-    `` 
+    ``
     "help" {:kind :flag #TODO a bit more complicated
             :short "h"
             :help "Run this help message"
@@ -59,55 +59,55 @@ segments, or script arguments, or both
             :help "Define a temporary script directory location for this command"
             #:action :help
             :short-circuit false}
-    "local" {:kind :flag
+    "local" {:kind :flag}
             :short "l"
             :help "Shortcut for `--base ./`"
             #:action :help
-            :short-circuit false}
+            :short-circuit false
     "new" {:kind :flag #technically an option but we treat it differently
            :short "n"
            :help "Create a new script"
            #:action (print "I own a cat")
-           :short-ciruit false} 
+           :short-ciruit false}
     "template" {:kind :option
                 :short "t"
                 :help "Used with `--new` to indicate the path of the template to use"
                 #:action (print "I own a cat")
                 :short-ciruit false
-                :default "default"} 
+                :default "default"}
     "no-template" {:kind :option
                    :help "Used with `--new` to make the new script in a blank file"
                    #:action (print "I own a cat")
-                   :short-ciruit false} 
+                   :short-ciruit false}
     "cat" {:kind :flag
            :short "c"
            :help "cat"
            #:action (print "Making a new script")
-           :short-ciruit false} 
+           :short-ciruit false}
     "edit" {:kind :flag
             :short "e"
             :help "Open a script in the configured editor"
             #:action (print "Making a new script")
-            :short-ciruit false} 
+            :short-ciruit false}
     "which" {:kind :flag
              :short "w"
              :help "print location of a script"
              #:action (print "Making a new script")
-             :short-ciruit false} 
+             :short-ciruit false}
     "debug" {:kind :flag
              :help "Print out debug info in addition to normal output"
              #:action (print "Making a new script")
-             :short-ciruit false} 
+             :short-ciruit false}
     :default {:kind :accumulate}))
 
-(def modifier-flags 
+(def modifier-flags
   ``
   Flags that change some behavior, but have no explicit action associated with
   them.
   ``
   ["base" "local" "template" "no-template" "debug"])
 
-(defn determine-script-directory 
+(defn determine-script-directory
   ``
   The root path where our scripts are stored/referenced from.
 
@@ -136,18 +136,18 @@ segments, or script arguments, or both
   ``
   (or (opts "template") (settings :template-path)))
 
-(def template 
+(def template
   (if (opts :no-template) "" (fs/read-all template-path)))
 
-(def debased-order 
-  (filter 
-    |(neither? "base" "local" $) 
+(def debased-order
+  (filter
+    |(neither? "base" "local" $)
     (opts :order)))
 
 (defn count-while
   [pred ind]
   (let [take-trues (partial take-while pred)]
-    (-> ind 
+    (-> ind
         take-trues
         length)))
 
@@ -161,15 +161,15 @@ segments, or script arguments, or both
     [;(break-off target-arg-count (opts :default))
      (drop target-arg-count debased-order)]))
 
-(def command-flag 
+(def command-flag
   ``
   The name of the first non-modifier flag passed in, `nil` if there is none.
 
   This flag will define what action we actually perform.
   ``
-  (first 
-    (filter 
-      |(none-of? [:default :order ;modifier-flags] $) 
+  (first
+    (filter
+      |(none-of? [:default :order ;modifier-flags] $)
       (keys opts))))
 
 (def command-flag-provided? (not-nil? command-flag))
@@ -190,7 +190,7 @@ segments, or script arguments, or both
   ``
   (let [using-template? (not (opts :no-template))
         template-location (string (settings :template-path) "/default")]
-    {:target target-args 
+    {:target target-args
      :command-flag command-flag
      :command-args command-args
      :script-directory (determine-script-directory settings opts)
@@ -230,8 +230,8 @@ segments, or script arguments, or both
       (fs/dir? path) (split-into-path-and-args rem-args (path-append next-arg))
       [(path-append ;args) []]))) # not executing (we can no longer make a valid existing path), therefore we don't have args
 
-(def invalid-path? 
-  (partial 
+(def invalid-path?
+  (partial
     meets-any-criteria? [fs/entity-does-not-exist? fs/not-executable-file?]))
 
 (defn open-in-editor
@@ -244,30 +244,30 @@ segments, or script arguments, or both
   [target]
   (first (split-into-path-and-args target)))
 
-(defn run-cat 
+(defn run-cat
   [path]
   (os/execute [(settings :cat-provider) (mainpath-of path)] :p))
 
 (defn run-edit [path] (open-in-editor path))
 
-(defn run-which 
+(defn run-which
   [path]
   (os/execute ["echo" path] :p))
 
 (defn dir-help [path]
   (let [has-helpfile? (is-directory-with-dot-help? path)
         exec-or-dir? |(or (fs/dir? (pathify path $)) (fs/executable-file? (pathify path $)))]
-    (if has-helpfile? 
+    (if has-helpfile?
       (run-cat (pathify path ".help"))
       (join-with "\n" ;(filter exec-or-dir? (os/dir path)))))) # TODO, add appending of quick help info
 
 (defn script-help [target]
   (let [has-helpfile? nil]
-    (if has-helpfile? 
+    (if has-helpfile?
       (fs/read-all (pathify target "TODO.help"))
       (fs/read-all (pathify target)))))
 
-(defn write-help 
+(defn write-help
   ``
   Dispatch to the correct write-help-function
   ``
@@ -278,7 +278,7 @@ segments, or script arguments, or both
     :script-help (script-help target)
     :undefined (string "Oh dear, I honestly have no idea what's gone wrong... " target)))
 
-(defn run-help 
+(defn run-help
   ``
   Determine the help-type and pass it, the target path, and any other pertinent
   data along to the write-help function.
@@ -296,24 +296,24 @@ segments, or script arguments, or both
   ``
   Creates a file at `path` if one does not already exist, loads it with
   <template>, and then runs the edit command. It then chmods the file to be
-  executable. 
+  executable.
   If arguments are given, they become the body of the script instead of the
   template, and the script is not opened in the editor.
-  
+
   TODO maybe prompt to confirm if we need to make new parent directories, in
   case a name gets typo'ed?
-  `` 
+  ``
   [path params & args]
   (let [template-provided? (neither? "" nil template) #NOTE: Currently unused
         template (fs/read-all (params :template-file))
         contents (string template (join-with " " ;args))]
-    (if (fs/entity-does-not-exist? path) 
-      (do 
+    (if (fs/entity-does-not-exist? path)
+      (do
         (fs/create-new-executable-file path contents)
         (run-edit path))
       (run-help path))))
 
-(defn run-script [target] 
+(defn run-script [target]
   (let [[path args] (split-into-path-and-args target)]
     (cond
       (fs/entity-does-not-exist? path) (run-help target)
@@ -356,9 +356,9 @@ segments, or script arguments, or both
     (pp (define-parameters opts))
     (print "\n---\n")))
 
-(defn main 
-  [& args] 
+(defn main
+  [& args]
   (do
-    (dispatch-command 
+    (dispatch-command
       (define-parameters opts))))
 
