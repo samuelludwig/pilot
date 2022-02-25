@@ -1,5 +1,5 @@
-(use ./lib)
-(import ./futils :as fs)
+(use ./../lib/prelude)
+(import ./../lib/fsutils :as fs)
 
 (defn- keywordize-keys
   [tab]
@@ -20,7 +20,7 @@
   Expects a string in the form `<key>=<value>`, returns `["key" "value"]`.
   ``
   [s]
-  (->> s 
+  (->> s
        (string/split "=")
        (map string/trim))) # NOTE: Should I include whitespace?
 
@@ -31,11 +31,11 @@
   should be taken care of by the first check.
   ``
   [opt-arrays]
-  (filter 
+  (filter
     (and
       |(indexed? $)
-      |(= 2 (length $)) 
-      (fn [[x y]] (and (string? x) (string? y)))) 
+      |(= 2 (length $))
+      (fn [[x y]] (and (string? x) (string? y))))
     opt-arrays))
 
 (defn- filter-out-nils
@@ -47,24 +47,24 @@
   Expected format (for now) is <OPTION>=<value><whitespace><OPTION>=<value>...
   Need to fit matching options into table matching options in config-defaults
   ``
-  [config] 
-    (->> config 
-         (to-lines) 
-         (map parse-key-value)
-         (filter-out-nils)
-         (filter-out-malformed-options)
-         (from-pairs)
-         (keywordize-keys)))
+  [config]
+  (->> config
+       (to-lines)
+       (map parse-key-value)
+       (filter-out-nils)
+       (filter-out-malformed-options)
+       (from-pairs)
+       (keywordize-keys)))
 
 # Where else could I search for configs? home? Should I source from multiple?
-(def config-location 
+(def config-location
   (let [xdg-loc (os/getenv "XDG_CONFIG_HOME")]
-     (if 
-       (nil? xdg-loc) 
+     (if
+       (nil? xdg-loc)
        (string (os/getenv "HOME") "/.config/pilot")
        (string xdg-loc "/pilot"))))
 
-(def config-defaults 
+(def config-defaults
   {:script-path (string config-location "/scripts")
    :template-path (string config-location "/templates")
    :cat-provider "bat"
@@ -73,10 +73,10 @@
 
 (def config-file (string config-location "/config.cfg"))
 
-(def settings 
+(def settings
   "Settings derived from the config file"
-  (merge 
-    config-defaults 
+  (merge
+    config-defaults
     (parse-config-buffer (fs/read-all config-file))))
 
 (def script-path (settings :script-path))

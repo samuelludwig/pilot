@@ -1,4 +1,4 @@
-(use ./lib)
+(use ./../lib/prelude)
 
 (defn split-filename-and-ext 
   [path]

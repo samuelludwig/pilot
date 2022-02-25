@@ -1,15 +1,15 @@
 #!/usr/bin/env janet
-(import ./argparse :as ap)
+(import ./../lib/argparse :as ap)
 (import ./read-config :as conf)
-(import ./futils :as fs)
-(use ./lib)
+(import ./../lib/fsutils :as fs)
+(use ./../lib/prelude)
 
 ``
 `target` is an array of arguments, which can be composed of either path
 segments, or script arguments, or both
 ``
 
-(def path-separator
+(def- path-separator
   (if (= (os/which) :windows) "\\" "/"))
 
 (defn- pathify
@@ -44,61 +44,61 @@ segments, or script arguments, or both
 
 (def settings conf/settings)
 
-(def opts
-  (ap/argparse
-    ``
-    Describe script here
-    ``
-    "help" {:kind :flag #TODO a bit more complicated
-            :short "h"
-            :help "Run this help message"
-            #:action :help
-            :short-circuit false}
-    "base" {:kind :option
-            :short "b"
-            :help "Define a temporary script directory location for this command"
-            #:action :help
-            :short-circuit false}
-    "local" {:kind :flag}
-            :short "l"
-            :help "Shortcut for `--base ./`"
-            #:action :help
-            :short-circuit false
-    "new" {:kind :flag #technically an option but we treat it differently
-           :short "n"
-           :help "Create a new script"
-           #:action (print "I own a cat")
-           :short-ciruit false}
-    "template" {:kind :option
-                :short "t"
-                :help "Used with `--new` to indicate the path of the template to use"
-                #:action (print "I own a cat")
-                :short-ciruit false
-                :default "default"}
-    "no-template" {:kind :option
-                   :help "Used with `--new` to make the new script in a blank file"
-                   #:action (print "I own a cat")
-                   :short-ciruit false}
-    "cat" {:kind :flag
-           :short "c"
-           :help "cat"
-           #:action (print "Making a new script")
-           :short-ciruit false}
-    "edit" {:kind :flag
-            :short "e"
-            :help "Open a script in the configured editor"
-            #:action (print "Making a new script")
-            :short-ciruit false}
-    "which" {:kind :flag
-             :short "w"
-             :help "print location of a script"
-             #:action (print "Making a new script")
-             :short-ciruit false}
-    "debug" {:kind :flag
-             :help "Print out debug info in addition to normal output"
-             #:action (print "Making a new script")
-             :short-ciruit false}
-    :default {:kind :accumulate}))
+#(def opts
+#  (ap/argparse
+#    ``
+#    Describe script here
+#    ``
+#    "help" {:kind :flag #TODO a bit more complicated
+#            :short "h"
+#            :help "Run this help message"
+#            #:action :help
+#            :short-circuit false}
+#    "base" {:kind :option
+#            :short "b"
+#            :help "Define a temporary script directory location for this command"
+#            #:action :help
+#            :short-circuit false}
+#    "local" {:kind :flag
+#             :short "l"
+#             :help "Shortcut for `--base ./`"
+#             #:action :help
+#             :short-circuit false}
+#    "new" {:kind :flag #technically an option but we treat it differently
+#           :short "n"
+#           :help "Create a new script"
+#           #:action (print "I own a cat")
+#           :short-ciruit false}
+#    "template" {:kind :option
+#                :short "t"
+#                :help "Used with `--new` to indicate the path of the template to use"
+#                #:action (print "I own a cat")
+#                :short-ciruit false
+#                :default "default"}
+#    "no-template" {:kind :option
+#                   :help "Used with `--new` to make the new script in a blank file"
+#                   #:action (print "I own a cat")
+#                   :short-ciruit false}
+#    "cat" {:kind :flag
+#           :short "c"
+#           :help "cat"
+#           #:action (print "Making a new script")
+#           :short-ciruit false}
+#    "edit" {:kind :flag
+#            :short "e"
+#            :help "Open a script in the configured editor"
+#            #:action (print "Making a new script")
+#            :short-ciruit false}
+#    "which" {:kind :flag
+#             :short "w"
+#             :help "print location of a script"
+#             #:action (print "Making a new script")
+#             :short-ciruit false}
+#    "debug" {:kind :flag
+#             :help "Print out debug info in addition to normal output"
+#             #:action (print "Making a new script")
+#             :short-ciruit false}
+#    :default {:kind :accumulate}))
 
 (def modifier-flags
   ``
