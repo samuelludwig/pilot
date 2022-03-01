@@ -11,7 +11,7 @@
         (struct))))
 
 (defn- to-lines
-  "Splits a multi-line string into an array of string, one for each line."
+  "Splits a multi-line string into an array of strings, one for each line."
   [s]
   (if s (string/split "\n" s) []))
 
@@ -45,7 +45,7 @@
 (defn parse-config-buffer
   ``
   Expected format (for now) is <OPTION>=<value><whitespace><OPTION>=<value>...
-  Need to fit matching options into table matching options in config-defaults
+  Need to fit matching options into table matching options in reserve-config-defaults
   ``
   [config]
   (->> config
@@ -57,26 +57,27 @@
        (keywordize-keys)))
 
 # Where else could I search for configs? home? Should I source from multiple?
-(def config-location
-  (let [xdg-loc (os/getenv "XDG_CONFIG_HOME")]
+(def resolve-config-location
+  |(let [xdg-loc (os/getenv "XDG_CONFIG_HOME")]
      (if
        (nil? xdg-loc)
        (string (os/getenv "HOME") "/.config/pilot")
        (string xdg-loc "/pilot"))))
 
-(def config-defaults
-  {:script-path (string config-location "/scripts")
-   :template-path (string config-location "/templates")
-   :cat-provider "bat"
-   :pilot-editor (or (os/getenv "VISUAL") (os/getenv "EDITOR") "vi")
-   :copier-integration false})
+(def reserve-config-defaults
+  |(let [conf-loc (resolve-config-location)]
+     {:script-path (string conf-loc "/scripts")
+      :template-path (string conf-loc "/templates")
+      :cat-provider "bat"
+      :pilot-editor (or (os/getenv "VISUAL") (os/getenv "EDITOR") "vi")
+      :copier-integration false}))
 
-(def config-file (string config-location "/config.cfg"))
+(def resolve-config-file |(string (resolve-config-location) "/config.cfg"))
 
-(def settings
+(def resolve-settings
   "Settings derived from the config file"
-  (merge
-    config-defaults
-    (parse-config-buffer (fs/read-all config-file))))
+  |(merge
+     (reserve-config-defaults)
+     (parse-config-buffer (fs/read-all (resolve-config-file)))))
 
 (def script-path (settings :script-path))
