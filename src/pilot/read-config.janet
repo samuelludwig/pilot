@@ -64,20 +64,22 @@
        (string (os/getenv "HOME") "/.config/pilot")
        (string xdg-loc "/pilot"))))
 
-(def reserve-config-defaults
-  |(let [conf-loc (resolve-config-location)]
-     {:script-path (string conf-loc "/scripts")
-      :template-path (string conf-loc "/templates")
-      :cat-provider "bat"
-      :pilot-editor (or (os/getenv "VISUAL") (os/getenv "EDITOR") "vi")
-      :copier-integration false}))
+(def resolve-default-editor
+  |(or (os/getenv "VISUAL") (os/getenv "EDITOR") "vi"))
 
-(def resolve-config-file |(string (resolve-config-location) "/config.cfg"))
+(defn resolve-config-defaults [config-path default-editor]
+  {:script-path (string config-path "/scripts")
+   :template-path (string config-path "/templates")
+   :cat-provider "bat"
+   :pilot-editor default-editor
+   :copier-integration false})
 
-(def resolve-settings
+(defn resolve-config-file [config-path] (string config-path "/config.cfg"))
+
+(defn resolve-settings
   "Settings derived from the config file"
-  |(merge
-     (reserve-config-defaults)
-     (parse-config-buffer (fs/read-all (resolve-config-file)))))
-
-(def script-path (settings :script-path))
+  [config-path default-editor]
+  (merge
+    (resolve-config-defaults config-path default-editor)
+    (parse-config-buffer
+      (fs/read-all (resolve-config-file config-path)))))
