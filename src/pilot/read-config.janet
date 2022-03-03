@@ -40,7 +40,25 @@
 
 (defn- filter-out-nils
   [ind]
-  (filter |(not (nil? $)) ind))
+  (filter |(not-nil? $) ind))
+
+(defn- bool-from-string
+  ``
+  Convert strings such as `true`, `false`, `yes`, and `no` to their actual
+  boolean value
+  ``
+  [s]
+  (let [s (string/ascii-lower s)
+        true-strings ["true" "t" "yes" "y" "ok" "1"]]
+    (if (find |(= s $) true-strings) true false)))
+
+(defn- parse-boolean-values
+  ``
+  Convert strings such as `true`, `false`, `yes`, and `no` to their actual
+  boolean value for fields which we explicitly consider as booleans.
+  ``
+  [x]
+  x)
 
 (defn parse-config-buffer
   ``
@@ -49,12 +67,13 @@
   ``
   [config]
   (->> config
-       (to-lines)
+       to-lines
        (map parse-key-value)
-       (filter-out-nils)
-       (filter-out-malformed-options)
-       (from-pairs)
-       (keywordize-keys)))
+       filter-out-nils
+       filter-out-malformed-options
+       from-pairs
+       keywordize-keys
+       parse-boolean-values))
 
 # Where else could I search for configs? home? Should I source from multiple?
 (def resolve-config-location
