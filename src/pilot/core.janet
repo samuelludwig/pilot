@@ -9,6 +9,20 @@
 segments, or script arguments, or both
 ``
 
+(defn- dbg
+  ``
+  An easy debug printout
+  ``
+  [tag data]
+  (let [s (string/ascii-upper (string tag))]
+    (do
+      (print "\n---[" s "]---\n")
+      (pp data)
+      (print "\n\n"))))
+
+# TODO
+(defn- validate-config [x] x)
+
 (def- path-separator
   (if (= (os/which) :windows) "\\" "/"))
 
@@ -19,6 +33,32 @@ segments, or script arguments, or both
   ``
   [& parts]
   (string/join parts path-separator))
+
+(defn- target-path-from
+  ``
+  Take in a config table containing a value for :script-path, and a list of
+  strings, each a component (or "shard") of a path relative to the value of
+  :script-path. We concatenate all of these values (with inserted path)
+  separators to return the resultant path.
+  ``
+  [config path-shards]
+  (pathify [(:script-path config) ;path-shards]))
+
+(defn help-command
+  ``
+  Cases:
+  1. Path could be an executable script
+    a. With a matching .help file
+    b. Without a matching .help file
+  2. Path could be a directory with no main file
+    a. With a .help file
+    b. Without a .help file
+  3. Path could be a directory with a main file
+    a. With a .help file
+    b. Without a .help file
+  ``
+  [path])
+
 
 (defn- is-directory-with-main? [path]
   (let [has-main? (partial has-equals? "main")]
@@ -231,14 +271,15 @@ segments, or script arguments, or both
       [(path-append ;args) []]))) # not executing (we can no longer make a valid existing path), therefore we don't have args
 
 (def invalid-path?
-  (partial
-    meets-any-criteria? [fs/entity-does-not-exist? fs/not-executable-file?]))
+  (partial meets-any-criteria?
+           [fs/entity-does-not-exist? fs/not-executable-file?]))
 
 (defn open-in-editor
   [path]
   (os/execute [(settings :pilot-editor) (mainpath-of path)] :p))
 
-(def append-to-script-directory (partial pathify (( define-parameters opts ) :script-directory)))
+(def append-to-script-directory
+  (partial pathify ((define-parameters opts) :script-directory)))
 
 (defn build-target-path-from-segment-list
   [target]
@@ -342,19 +383,12 @@ segments, or script arguments, or both
 
 (when (opts "debug")
   (do
-    (print "\n---[OPTIONS]---\n")
-    (pp opts)
-    (print "\n---[TARGET-ARGS]---\n")
-    (pp target-args)
-    (print "\n---[COMMAND-ARGS]---\n")
-    (pp command-args)
-    (print "\n---[COMMAND-ORDER]---\n")
-    (pp command-order)
-    (print "\n---[SCRIPT-PATH-AND-ARGS-IF-EXECUTED]---")
-    (pp (split-into-path-and-args target-args))
-    (print "\n---[PARSED-PARAMS]---\n")
-    (pp (define-parameters opts))
-    (print "\n---\n")))
+    (dbg :options opts)
+    (dbg :target-args target-args)
+    (dbg :command-args command-args)
+    (dbg :command-order command-order)
+    (dbg :script-path-and-args-if-executed (split-into-path-and-args target-args))
+    (dbg :parsed-params (define-parameters opts))))
 
 (defn main
   [& args]
