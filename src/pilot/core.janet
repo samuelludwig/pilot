@@ -44,22 +44,6 @@ segments, or script arguments, or both
   [config path-shards]
   (pathify [(:script-path config) ;path-shards]))
 
-(defn help-command
-  ``
-  Cases:
-  1. Path could be an executable script
-    a. With a matching .help file
-    b. Without a matching .help file
-  2. Path could be a directory with no main file
-    a. With a .help file
-    b. Without a .help file
-  3. Path could be a directory with a main file
-    a. With a .help file
-    b. Without a .help file
-  ``
-  [path])
-
-
 (defn- is-directory-with-main? [path]
   (let [has-main? (partial has-equals? "main")]
     (and
@@ -81,6 +65,63 @@ segments, or script arguments, or both
     (if (is-directory-with-main? path)
       (path-append "main")
       path)))
+
+(defn- find-dot-help
+  ``
+  Returns the location of the given paths .help file, otherwise returns nil.
+  ``
+  [path]
+  (let [help-path (string path ".help")]
+    (pass-through-when entity-exists? help-path)))
+
+(defn- extract-leading-comment [path] nil)
+
+(defn- scriptfile-help
+  ``
+  Takes in a path pointing to a scriptfile, checks if it has a matching
+  .help file in its dir, otherwise checks if
+  ``
+  [path]
+  (let [[dot-help leading-comment] (map-fns
+                                     path
+                                     [find-dot-help extract-leading-comment])]
+    (and
+      dot-help
+      leading-comment
+      (slurp path))))
+
+# TODO
+(defn help-command
+  ``
+  Cases:
+  1. Path could be an executable script
+    a. With a matching .help file
+    b. Without a matching .help file but with a leading comment
+    c. Without a matching .help file or leading comment
+  2. Path could be a directory with no main file
+    a. With a .help file
+    b. Without a .help file
+  3. Path could be a directory with a main file
+    a. With a .help file
+    b. Without a .help file
+  ``
+  [path]
+  (let [[is-exec? has-mainfile?] (map-fns path [executable-file?
+                                                |(dir-has-child $ "main")])]
+    (cond
+      is-exec? nil
+      has-mainfile? nil
+      nil)))
+
+
+(defn run-command
+  ``
+  Cases:
+  1. Path is an executable script (Runs)
+  2. Path is a directory with no main file (No Run)
+  3. Path is a directory with a main file (Runs)
+  ``
+  [path])
 
 (def settings conf/settings)
 

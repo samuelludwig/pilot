@@ -17,7 +17,7 @@
 (defn executable-file?
   [path]
   (let [fstats (os/stat path)]
-    (and 
+    (and
       fstats
       (= (fstats :mode) :file)
       (not-nil? (string/find "x" (fstats :permissions))))))

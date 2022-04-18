@@ -11,28 +11,32 @@
     :opening-slash-digraph "/*"
     :closing-slash-digraph "*/"
     :comment-block (choice
-                      (sequence 
-                        :opening-square-digraph 
-                        (to :closing-square-digraph) 
+                      (sequence
+                        :opening-square-digraph
+                        (to :closing-square-digraph)
                         :closing-square-digraph)
-                      (sequence 
-                        :opening-slash-digraph 
-                        (to :closing-slash-digraph) 
+                      (sequence
+                        :opening-slash-digraph
+                        (to :closing-slash-digraph)
                         :closing-slash-digraph))
     :main (capture :comment-block)})
 
+(defn pass-through-when [f x] (when (f x) x))
+
+(defn map-fns [x fns] (map |($ x) fns))
+
 (defn test-predicates
   [predicates subject]
-  (map |($ subject) predicates))
+  (map |(true? ($ subject)) predicates))
 
-(defn meets-all-criteria? 
+(defn meets-all-criteria?
   [predicates subject]
   (all true?
     (test-predicates predicates subject)))
 
 (defn meets-any-criteria?
   [predicates subject]
-  (truthy? 
+  (truthy?
     (any? (test-predicates predicates subject))))
 
 (def not-nil? (complement nil?))
@@ -56,13 +60,13 @@
   [pat ind]
   (has? |(peg/match pat $) ind))
 
-(defn break-off 
+(defn break-off
   ``
   Named with regards to the imagery of physically "breaking off" a piece of
   some particular item, like, say, a candy bar--splitting it into two separate
   chunks; sort of a variable-sized head/tail split.
   ``
-  [x ind] 
+  [x ind]
   (default ind [])
   [(take x ind) (drop x ind)])
 
@@ -76,7 +80,7 @@
   [xs subject]
   (none? (map |(= $ subject) xs)))
 
-(defn either? 
+(defn either?
   ``
   Checks if `subject` is equal to either `x` or `y`
   ``
